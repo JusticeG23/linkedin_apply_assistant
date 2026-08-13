@@ -11,6 +11,7 @@ except ModuleNotFoundError:  # Allows smoke tests before project dependencies ar
 
 from .models import Job, JobStatus
 from .context_rules import evaluate_context_rules
+from .job_sections import section_text, split_job_sections
 
 
 # LinkedIn cards often abbreviate salary as "$200k-$350k"; normalize that
@@ -68,6 +69,11 @@ def _load_simple_yaml(content: str) -> dict[str, Any]:
 def _contains_any(text: str, terms: list[str]) -> list[str]:
     lower = text.lower()
     return [term for term in terms if term.lower() in lower]
+
+
+def _append_unique(items: list[str], item: str) -> None:
+    if item and item not in items:
+        items.append(item)
 
 
 def _extract_money_values(text: str) -> list[int]:
@@ -135,37 +141,53 @@ def estimate_base(job: Job) -> Optional[int]:
 
 
 def classify_job(job: Job, criteria: dict[str, Any], context_rules: Optional[dict[str, Any]] = None) -> Job:
-    full_text = " ".join([job.title, job.company, job.location, job.salary_text, job.description])
+    full_text = " ".join([job.title, job.company, job.location, job.salary_text, job.work_mode, job.description])
     title_text = " ".join([job.title, job.company])
+    sections = split_job_sections(job.description)
+    required_text = section_text(sections, {"required"})
+    preferred_text = section_text(sections, {"preferred"})
+    qualification_text = section_text(sections, {"qualifications"})
+    responsibilities_text = section_text(sections, {"responsibilities"})
+
+    # If a posting has explicit required sections, use those for hard filters.
+    # Otherwise fall back to the full text so sparse/recruiter posts still get
+    # screened. Generic "Qualifications" is ambiguous, so keep it in scope too.
+    hard_filter_text = " ".join([required_text, qualification_text]).strip() or full_text
 
     reject_reasons: list[str] = []
+    notes: list[str] = []
     score = 0
 
     if not job.easy_apply:
-        reject_reasons.append("not Easy Apply")
+        _append_unique(reject_reasons, "not Easy Apply")
 
     allowed_locations = criteria.get("allowed_locations", [])
     if allowed_locations and not _location_allowed(job, criteria, full_text):
-        reject_reasons.append(f"location outside target band: {job.location}")
+        _append_unique(reject_reasons, f"location outside target band: {job.location}")
 
     # This must run against the detailed job text when available; cards often
     # omit qualification lines like "8+ years of experience."
-    hard_yoe = _required_min_yoe(full_text)
+    hard_yoe = _required_min_yoe(hard_filter_text)
     max_yoe = int(criteria.get("max_required_yoe", 5))
     if hard_yoe and hard_yoe > max_yoe:
-        reject_reasons.append(f"hard YOE appears too high: {hard_yoe}+")
+        _append_unique(reject_reasons, f"hard YOE appears too high: {hard_yoe}+")
 
     bad_roles = _contains_any(title_text, criteria.get("reject_role_terms", []))
     if bad_roles:
-        reject_reasons.append("role mismatch: " + ", ".join(bad_roles))
+        _append_unique(reject_reasons, "role mismatch: " + ", ".join(bad_roles))
 
-    hard_gaps = _contains_any(full_text, criteria.get("hard_gap_terms", []))
+    hard_gap_terms = criteria.get("hard_gap_terms", [])
+    hard_gaps = _contains_any(hard_filter_text, hard_gap_terms)
     if hard_gaps:
-        reject_reasons.append("hard skill gap: " + ", ".join(hard_gaps[:3]))
+        _append_unique(reject_reasons, "hard skill gap: " + ", ".join(hard_gaps[:3]))
 
-    for match in evaluate_context_rules(full_text, context_rules or {}):
+    non_required_gaps = sorted(set(_contains_any(" ".join([preferred_text, responsibilities_text]), hard_gap_terms)))
+    if non_required_gaps:
+        notes.append("non-required gaps: " + ", ".join(non_required_gaps[:3]))
+
+    for match in evaluate_context_rules(hard_filter_text, context_rules or {}):
         if match.reject:
-            reject_reasons.append(match.reason)
+            _append_unique(reject_reasons, match.reason)
 
     # Normalize salary ranges to one base-pay decision value. Keep the legacy
     # storage field name for compatibility; output labels it as estimated base.
@@ -174,7 +196,7 @@ def classify_job(job: Job, criteria: dict[str, Any], context_rules: Optional[dic
     job.estimated_tc = estimated_base
 
     if estimated_base and estimated_base < min_base:
-        reject_reasons.append(f"estimated base below target: {estimated_base}")
+        _append_unique(reject_reasons, f"estimated base below target: {estimated_base}")
 
     allowed_terms = _contains_any(title_text, criteria.get("allowed_role_terms", []))
     score += 10 * len(allowed_terms)
@@ -187,15 +209,15 @@ def classify_job(job: Job, criteria: dict[str, Any], context_rules: Optional[dic
         score += 10
 
     job.score = score
+    if allowed_terms:
+        notes.insert(0, "matches " + ", ".join(allowed_terms))
+    if estimated_base:
+        notes.append(f"est base ${estimated_base:,}")
+    job.fit_notes = "; ".join(notes)
+
     if reject_reasons:
         job.status = JobStatus.REJECTED
         job.reject_reason = "; ".join(reject_reasons)
     else:
         job.status = JobStatus.NEEDS_REVIEW
-        notes = []
-        if allowed_terms:
-            notes.append("role terms: " + ", ".join(allowed_terms))
-        if estimated_base:
-            notes.append(f"estimated base: ${estimated_base:,}")
-        job.fit_notes = "; ".join(notes)
     return job

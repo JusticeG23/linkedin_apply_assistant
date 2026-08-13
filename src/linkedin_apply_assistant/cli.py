@@ -169,10 +169,13 @@ def print_pretty_job(job) -> None:
     reason = job.reject_reason or job.fit_notes or "-"
     print(f"{job.title} — {job.company}")
     print(f"Status: {job.status.value} | Score: {job.score} | Preset: {job.search_preset or '-'}")
-    print(f"Location: {job.location}")
+    work_mode = f" ({job.work_mode})" if job.work_mode else ""
+    print(f"Location: {job.location}{work_mode}")
     if job.salary_text or estimated_base:
         print(f"Pay: {job.salary_text or '-'} | Est base: {estimated_base or '-'}")
     print(f"Why: {reason}")
+    if job.reject_reason and job.fit_notes:
+        print(f"Notes: {job.fit_notes}")
     print(f"URL: {job.url}")
 
 

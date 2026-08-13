@@ -22,9 +22,12 @@ class ContextRuleMatch:
     phrase: str
     score: float
     reject: bool
+    label: str = ""
 
     @property
     def reason(self) -> str:
+        if self.label:
+            return self.label
         return f"context rule: {self.rule} via {self.anchor!r}/{self.phrase!r}"
 
 
@@ -68,6 +71,7 @@ def evaluate_context_rules(
                         phrase=phrase,
                         score=score,
                         reject=bool(rule.get("reject", True)),
+                        label=str(rule.get("reason", "")),
                     )
                 )
     return matches

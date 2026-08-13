@@ -73,3 +73,25 @@ ml_research_required:
     - collaborate with research
     - partner with research
     - support researchers
+
+enterprise_it_ops_required:
+  reject: true
+  reason: required enterprise IT ops experience
+  anchors:
+    - dicm
+    - discovery, insights, and configuration management
+    - itom
+    - it operation management
+    - itsm
+    - it service management
+  required_context:
+    - required
+    - required for the role
+    - minimum qualification
+    - minimum requirement
+  soft_context:
+    - preferred
+    - nice to have
+    - bonus
+    - plus
+    - familiarity

@@ -24,6 +24,7 @@ class Job:
     easy_apply: bool = False
     posted_at: str = ""
     salary_text: str = ""
+    work_mode: str = ""
     description: str = ""
     status: JobStatus = JobStatus.FOUND
     score: int = 0

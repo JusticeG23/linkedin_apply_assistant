@@ -26,6 +26,13 @@ CONTEXT_RULES = {
         "required_context": ["required", "must have", "production kubernetes"],
         "soft_context": ["preferred", "nice to have", "familiarity"],
     },
+    "enterprise_it_ops_required": {
+        "reject": True,
+        "anchors": ["dicm", "itom", "itsm", "it service management"],
+        "required_context": ["required", "required for the role"],
+        "soft_context": ["preferred", "nice to have", "familiarity"],
+        "reason": "required enterprise IT ops experience",
+    },
 }
 
 
@@ -139,6 +146,80 @@ def test_context_rule_ignores_preferred_kubernetes():
     )
     result = classify_job(job, CRITERIA, context_rules=CONTEXT_RULES)
     assert "kubernetes_required" not in result.reject_reason
+
+
+def test_preferred_hard_gap_does_not_reject():
+    job = Job(
+        job_id="preferred-pytorch",
+        title="Software Engineer",
+        company="Example AI",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/preferred-pytorch/",
+        easy_apply=True,
+        salary_text="$200k-$250k",
+        description=(
+            "Basic Qualifications 2+ years backend experience with Java or Python. "
+            "Preferred Qualifications Expertise in deep learning frameworks like PyTorch or TensorFlow."
+        ),
+    )
+    result = classify_job(job, CRITERIA, context_rules=CONTEXT_RULES)
+    assert result.status == JobStatus.NEEDS_REVIEW
+    assert "hard skill gap" not in result.reject_reason
+    assert "non-required gaps: pytorch" in result.fit_notes
+
+
+def test_required_hard_gap_still_rejects():
+    job = Job(
+        job_id="required-pytorch",
+        title="Software Engineer",
+        company="Example AI",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/required-pytorch/",
+        easy_apply=True,
+        salary_text="$200k-$250k",
+        description="Basic Qualifications 2+ years production PyTorch platform experience.",
+    )
+    result = classify_job(job, CRITERIA, context_rules=CONTEXT_RULES)
+    assert result.status == JobStatus.REJECTED
+    assert "hard skill gap: pytorch" in result.reject_reason
+
+
+def test_rejects_required_enterprise_it_ops_gap():
+    job = Job(
+        job_id="it-ops",
+        title="Backend Software Engineer - Platforms",
+        company="Example",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/it-ops/",
+        easy_apply=True,
+        salary_text="$200k-$250k",
+        description=(
+            "Minimum Qualifications Either DICM, ITOM, or ITSM experience required for the role. "
+            "Preferred Qualifications 3 years software development experience with Python."
+        ),
+    )
+    result = classify_job(job, CRITERIA, context_rules=CONTEXT_RULES)
+    assert result.status == JobStatus.REJECTED
+    assert "required enterprise IT ops experience" in result.reject_reason
+
+
+def test_preferred_high_yoe_does_not_reject_when_required_is_in_range():
+    job = Job(
+        job_id="preferred-yoe",
+        title="Software Engineer",
+        company="Example AI",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/preferred-yoe/",
+        easy_apply=True,
+        salary_text="$200k-$250k",
+        description=(
+            "Basic Qualifications 3+ years backend engineering experience. "
+            "Preferred Qualifications 8+ years building distributed platforms."
+        ),
+    )
+    result = classify_job(job, CRITERIA, context_rules=CONTEXT_RULES)
+    assert result.status == JobStatus.NEEDS_REVIEW
+    assert "hard YOE" not in result.reject_reason
 
 
 def test_accepts_yoe_range_by_lower_bound():

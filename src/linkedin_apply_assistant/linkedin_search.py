@@ -139,7 +139,13 @@ def extract_job_from_url(job_url: str, profile_dir: Path, headful: bool) -> Job:
                 document.querySelector('.job-details-jobs-unified-top-card__primary-description-container')?.innerText ||
                 document.querySelector('.jobs-unified-top-card__bullet')?.innerText ||
                 '';
-              return { text: `${descriptionText || text} ${applyText}`, detail_text: descriptionText || text, page_text: text, href: window.location.href, title, company, location: locationText };
+              const topCardText = (
+                document.querySelector('.job-details-jobs-unified-top-card')?.innerText ||
+                document.querySelector('.jobs-unified-top-card')?.innerText ||
+                locationText ||
+                ''
+              ).replace(/\\s+/g, ' ').trim();
+              return { text: `${topCardText} ${descriptionText || ''} ${applyText}`, top_card_text: topCardText, detail_text: descriptionText, page_text: text, href: window.location.href, title, company, location: locationText };
             }
             """
         )
@@ -157,6 +163,7 @@ def _clean_single_job(raw_job: dict) -> None:
     company = (raw_job.get("company") or "").strip()
     text = raw_job.get("detail_text") or raw_job.get("text") or ""
     page_text = raw_job.get("page_text") or text
+    top_card_text = raw_job.get("top_card_text") or ""
 
     # Public/logged-in LinkedIn pages sometimes expose the best title/company
     # only through document.title, e.g. "Role | Company | LinkedIn".
@@ -165,10 +172,16 @@ def _clean_single_job(raw_job: dict) -> None:
         raw_job["title"] = title_parts[0]
         if not company:
             raw_job["company"] = title_parts[1]
+    top_card_text = top_card_text or _top_card_from_page_text(raw_job.get("title") or "", page_text)
 
     location = (raw_job.get("location") or "").strip()
     if "·" in location:
         location = location.split("·", 1)[0].strip()
+    location = _clean_location_text(location)
+    detail_location = _location_from_detail_text(text)
+    header_location = _location_from_page_header(raw_job.get("title") or "", top_card_text or page_text)
+    if detail_location or header_location:
+        location = detail_location or header_location
     if not location:
         location_match = re.search(r"\|\s*([^|·]+?)\s*\|\s*\d+\s*[–\-]\s*\d+\s*years", text, re.I)
         if not location_match:
@@ -177,7 +190,92 @@ def _clean_single_job(raw_job: dict) -> None:
             location_match = re.search(r"\b((?:San Francisco|San Fransisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|]*)\s*[·|]", page_text)
         if location_match:
             location = location_match.group(1).strip()
-    raw_job["location"] = location.replace("San Fransisco", "San Francisco")
+    raw_job["location"] = _clean_location_text(location).replace("San Fransisco", "San Francisco")
+    raw_job["detail_text"] = _strip_linkedin_noise(raw_job.get("detail_text") or "")
+    raw_job["work_mode"] = _work_mode_from_text(top_card_text) or _work_mode_from_text(raw_job["detail_text"])
+
+
+def _clean_location_text(location: str) -> str:
+    cleaned = (location or "").strip()
+    for marker in ["You’d be", "You'd be", "Promoted"]:
+        if marker in cleaned:
+            cleaned = cleaned.split(marker, 1)[0].strip()
+    return cleaned
+
+
+def _location_from_page_header(title: str, page_text: str) -> str:
+    if not title or not page_text:
+        return ""
+
+    compact = re.sub(r"\s+", " ", page_text).strip()
+    title_idx = compact.find(title.strip())
+    if title_idx < 0:
+        return ""
+
+    # In the logged-in job view, LinkedIn often renders:
+    # "<title> San Jose, CA · 6 days ago · Over 100 applicants ..."
+    after_title = compact[title_idx + len(title.strip()) : title_idx + len(title.strip()) + 220]
+    location_match = re.search(
+        r"\b((?:San Jose|San Francisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|]*)\s*[·|]",
+        after_title,
+    )
+    if location_match:
+        return _clean_location_text(location_match.group(1).strip())
+    return ""
+
+
+def _top_card_from_page_text(title: str, page_text: str) -> str:
+    if not title or not page_text:
+        return ""
+
+    compact = re.sub(r"\s+", " ", page_text).strip()
+    title_idx = compact.find(title.strip())
+    if title_idx < 0:
+        return ""
+
+    about_idx = compact.find("About the job", title_idx)
+    if about_idx < 0:
+        about_idx = title_idx + 500
+    return compact[title_idx:min(about_idx, title_idx + 700)].strip()
+
+
+def _location_from_detail_text(text: str) -> str:
+    match = re.search(
+        r"\bLocation\s*(?:&\s*Package)?\s*:?\s*(?:📍\s*)?"
+        r"((?:San Jose|San Francisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|\n]*?)"
+        r"(?=\s*(?:🏠|•|·|Company Stage|Office Type|Salary|Company Description|Working Model|$))",
+        text or "",
+        re.I,
+    )
+    return _clean_location_text(match.group(1).strip()) if match else ""
+
+
+def _work_mode_from_text(text: str) -> str:
+    lower = (text or "").lower()
+    if "hybrid" in lower:
+        return "Hybrid"
+    if "on-site" in lower or "onsite" in lower:
+        return "On-site"
+    if "remote" in lower:
+        return "Remote"
+    return ""
+
+
+def _strip_linkedin_noise(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    for marker in [
+        "Set alert for similar jobs",
+        "See how you compare to other applicants",
+        "Exclusive Job Seeker Insights",
+        "Powered by Bing",
+        "More jobs",
+        "Show Premium Insights",
+        "Looking for talent?",
+    ]:
+        idx = cleaned.find(marker)
+        if idx >= 0:
+            return cleaned[:idx].strip()
+    return cleaned
 
 
 def _hydrate_detail_text(context, raw_jobs: list[dict], detail_limit: int) -> None:
@@ -211,7 +309,7 @@ def _hydrate_detail_text(context, raw_jobs: list[dict], detail_limit: int) -> No
                     """
                 )
                 if detail_text:
-                    raw["detail_text"] = detail_text
+                    raw["detail_text"] = _strip_linkedin_noise(detail_text)
             except Exception as exc:
                 raw["detail_error"] = str(exc)
     finally:
@@ -242,7 +340,7 @@ def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False) -> It
             continue
         seen.add(job_id)
         card_text = raw.get("text", "")
-        detail_text = raw.get("detail_text", "")
+        detail_text = _strip_linkedin_noise(raw.get("detail_text", ""))
         signal_text = " ".join(part for part in [card_text, detail_text] if part)
         description = detail_text or card_text
         yield Job(
@@ -253,6 +351,7 @@ def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False) -> It
             url=url,
             easy_apply=search_is_easy_apply or _card_has_easy_apply_signal(signal_text),
             salary_text=_salary_from_text(signal_text),
+            work_mode=raw.get("work_mode", "") or _work_mode_from_text(signal_text),
             posted_at=_posted_from_text(signal_text),
             description=description,
         )
