@@ -1,0 +1,24 @@
+[project]
+name = "linkedin-apply-assistant"
+version = "0.1.0"
+description = "Semi-automated LinkedIn Easy Apply discovery, filtering, and queueing."
+requires-python = ">=3.9"
+dependencies = [
+  "playwright>=1.46.0",
+  "pydantic>=2.7.0",
+  "pyyaml>=6.0.1",
+  "rapidfuzz>=3.9.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+jobbot = "linkedin_apply_assistant.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

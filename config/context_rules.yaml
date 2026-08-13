@@ -1,0 +1,75 @@
+degree_required:
+  reject: true
+  anchors:
+    - phd
+    - ph.d
+    - doctorate
+    - advanced degree
+  required_context:
+    - required
+    - requirement
+    - must have
+    - mandatory
+    - minimum qualification
+    - minimum requirement
+  soft_context:
+    - preferred
+    - nice to have
+    - bonus
+    - plus
+    - equivalent experience
+    - or phd
+
+kubernetes_required:
+  reject: true
+  anchors:
+    - kubernetes
+    - k8s
+  required_context:
+    - required
+    - must have
+    - mandatory
+    - production kubernetes
+    - deep kubernetes
+  soft_context:
+    - preferred
+    - nice to have
+    - bonus
+    - plus
+    - familiarity
+
+data_science_required:
+  reject: true
+  anchors:
+    - data science
+    - statistical modeling
+    - experiment design
+  required_context:
+    - required
+    - must have
+    - responsible for
+    - build models
+    - statistical analysis
+  soft_context:
+    - collaborate with data science
+    - partner with data science
+    - data science teams
+    - support data science
+
+ml_research_required:
+  reject: true
+  anchors:
+    - research scientist
+    - machine learning scientist
+    - llm training
+    - model training
+  required_context:
+    - required
+    - must have
+    - train models
+    - publish
+    - research agenda
+  soft_context:
+    - collaborate with research
+    - partner with research
+    - support researchers
