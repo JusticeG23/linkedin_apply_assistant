@@ -35,7 +35,6 @@ def main() -> None:
     discover.add_argument("--headful", action="store_true")
     discover.add_argument("--keep-open", action="store_true")
     discover.add_argument("--max-scrolls", type=int, default=5)
-    discover.add_argument("--detail-limit", type=int, default=25)
 
     login = sub.add_parser("login", help="Open LinkedIn and keep the browser open for manual login.")
     login.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE)
@@ -73,7 +72,6 @@ def run_discover(args: argparse.Namespace) -> None:
         profile_dir=args.profile_dir,
         headful=args.headful,
         max_scrolls=args.max_scrolls,
-        detail_limit=args.detail_limit,
         keep_open=args.keep_open,
     )
     for job in jobs:

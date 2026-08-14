@@ -30,7 +30,6 @@ def extract_jobs_from_page(
     profile_dir: Path,
     headful: bool,
     max_scrolls: int,
-    detail_limit: int = 25,
     keep_open: bool = False,
 ) -> list[Job]:
     from playwright.sync_api import sync_playwright
@@ -58,7 +57,7 @@ def extract_jobs_from_page(
                 '[data-job-id]'
               ];
               const cards = Array.from(new Set(selectors.flatMap(s => Array.from(document.querySelectorAll(s)))));
-              return cards.slice(0, 250).map(card => {
+              const jobs = cards.slice(0, 250).map(card => {
                 const text = (card.innerText || card.textContent || '').replace(/\\s+/g, ' ').trim();
                 const link = card.querySelector('a[href*="/jobs/view/"]');
                 const href = link ? link.href : '';
@@ -78,16 +77,89 @@ def extract_jobs_from_page(
                   '';
                 return { text, href, title, company, location };
               }).filter(j => j.href || j.title);
+              if (jobs.length) return jobs;
+
+              const seen = new Set();
+              return Array.from(document.querySelectorAll('a[href*="/jobs/view/"]'))
+                .map(link => {
+                  const href = link.href || '';
+                  const idMatch = href.match(/\\/jobs\\/view\\/(\\d+)/);
+                  const key = idMatch ? idMatch[1] : href;
+                  if (!key || seen.has(key)) return null;
+                  seen.add(key);
+                  return {
+                    text: (link.innerText || link.textContent || '').replace(/\\s+/g, ' ').trim(),
+                    href,
+                    title: (link.innerText || link.textContent || '').replace(/\\s+/g, ' ').trim(),
+                    company: '',
+                    location: ''
+                  };
+                })
+                .filter(Boolean)
+                .slice(0, 250);
             }
             """
         )
-        _hydrate_detail_text(context, raw_jobs, detail_limit=detail_limit)
+        if len(raw_jobs) <= 1:
+            raw_jobs = _merge_raw_jobs(raw_jobs, _collect_selected_search_results(page, max_scrolls=max_scrolls))
+        _hydrate_detail_text(context, raw_jobs)
         if keep_open:
             input("Discovery finished. Press Enter here to close the browser...")
         context.close()
 
     search_is_easy_apply = _search_has_easy_apply_filter(search_url)
-    return list(_to_jobs(raw_jobs, search_is_easy_apply=search_is_easy_apply))
+    return list(_to_jobs(raw_jobs, search_is_easy_apply=search_is_easy_apply, require_detail=True))
+
+
+def _collect_selected_search_results(page, max_scrolls: int) -> list[dict]:
+    raw_jobs: list[dict] = []
+    seen: set[str] = set()
+
+    # LinkedIn's newer AI job-search layout may render many visible rows as
+    # clickable text without stable cards, anchors, or data-job-id attributes.
+    # Clicking rows updates currentJobId in the URL, which gives us a stable
+    # detail-page URL to hydrate later.
+    for _ in range(max(1, max_scrolls + 1)):
+        for y in range(230, 970, 80):
+            page.mouse.click(330, y)
+            page.wait_for_timeout(900)
+            job_id = _current_job_id_from_url(page.url)
+            if not job_id or job_id in seen:
+                continue
+            seen.add(job_id)
+            title = page.title().split("|", 1)[0].strip()
+            raw_jobs.append(
+                {
+                    "href": f"https://www.linkedin.com/jobs/view/{job_id}/",
+                    "title": title,
+                    "company": "",
+                    "location": "",
+                    "text": title,
+                }
+            )
+        page.mouse.wheel(0, 900)
+        page.wait_for_timeout(900)
+
+    return raw_jobs
+
+
+def _merge_raw_jobs(primary: list[dict], fallback: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for raw in primary + fallback:
+        job_id = job_id_from_url(raw.get("href", ""))
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        merged.append(raw)
+    return merged
+
+
+def _current_job_id_from_url(url: str) -> str:
+    query = parse_qs(urlparse(url).query)
+    if query.get("currentJobId"):
+        return query["currentJobId"][0]
+    return job_id_from_url(url)
 
 
 def extract_job_from_url(job_url: str, profile_dir: Path, headful: bool) -> Job:
@@ -243,7 +315,7 @@ def _location_from_detail_text(text: str) -> str:
     match = re.search(
         r"\bLocation\s*(?:&\s*Package)?\s*:?\s*(?:📍\s*)?"
         r"((?:San Jose|San Francisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|\n]*?)"
-        r"(?=\s*(?:🏠|•|·|Company Stage|Office Type|Salary|Company Description|Working Model|$))",
+        r"(?=\s*(?:🏠|•|·|…|Company Stage|Office Type|Salary|Company Description|Working Model|Work Model|$))",
         text or "",
         re.I,
     )
@@ -278,38 +350,60 @@ def _strip_linkedin_noise(text: str) -> str:
     return cleaned
 
 
-def _hydrate_detail_text(context, raw_jobs: list[dict], detail_limit: int) -> None:
-    if detail_limit <= 0:
-        return
-
+def _hydrate_detail_text(context, raw_jobs: list[dict]) -> None:
     detail_page = context.new_page()
     try:
-        for raw in raw_jobs[:detail_limit]:
+        for raw in raw_jobs:
             href = raw.get("href", "")
             if not href:
                 continue
             try:
                 detail_page.goto(normalize_job_url(href), wait_until="domcontentloaded", timeout=30_000)
                 detail_page.wait_for_timeout(900)
-                detail_text = detail_page.evaluate(
+                detail_data = detail_page.evaluate(
                     """
                     () => {
                       const text = (document.body.innerText || document.body.textContent || '').replace(/\\s+/g, ' ').trim();
                       const node =
                         document.querySelector('.jobs-description') ||
                         document.querySelector('.jobs-box__html-content');
-                      const nodeText = ((node && (node.innerText || node.textContent)) || '').replace(/\\s+/g, ' ').trim();
-                      if (nodeText) return nodeText;
-                      const aboutIndex = text.indexOf('About the job');
-                      const companyIndex = text.indexOf('About the company');
-                      if (aboutIndex < 0) return '';
-                      const endIndex = companyIndex > aboutIndex ? companyIndex : text.length;
-                      return text.slice(aboutIndex, endIndex).trim();
+                      let detailText = ((node && (node.innerText || node.textContent)) || '').replace(/\\s+/g, ' ').trim();
+                      if (!detailText) {
+                        const aboutIndex = text.indexOf('About the job');
+                        const companyIndex = text.indexOf('About the company');
+                        if (aboutIndex >= 0) {
+                          const endIndex = companyIndex > aboutIndex ? companyIndex : text.length;
+                          detailText = text.slice(aboutIndex, endIndex).trim();
+                        }
+                      }
+                      const title =
+                        document.querySelector('.job-details-jobs-unified-top-card__job-title h1')?.innerText ||
+                        document.querySelector('.jobs-unified-top-card__job-title')?.innerText ||
+                        document.querySelector('h1')?.innerText ||
+                        document.title ||
+                        '';
+                      const company =
+                        document.querySelector('.job-details-jobs-unified-top-card__company-name')?.innerText ||
+                        document.querySelector('.jobs-unified-top-card__company-name')?.innerText ||
+                        '';
+                      const location =
+                        document.querySelector('.job-details-jobs-unified-top-card__primary-description-container')?.innerText ||
+                        document.querySelector('.jobs-unified-top-card__bullet')?.innerText ||
+                        '';
+                      const topCardText = (
+                        document.querySelector('.job-details-jobs-unified-top-card')?.innerText ||
+                        document.querySelector('.jobs-unified-top-card')?.innerText ||
+                        location ||
+                        ''
+                      ).replace(/\\s+/g, ' ').trim();
+                      return { detail_text: detailText, page_text: text, top_card_text: topCardText, title, company, location };
                     }
                     """
                 )
-                if detail_text:
-                    raw["detail_text"] = _strip_linkedin_noise(detail_text)
+                if detail_data.get("detail_text"):
+                    raw.update({key: value for key, value in detail_data.items() if value})
+                    raw["detail_text"] = _strip_linkedin_noise(raw.get("detail_text", ""))
+                    _clean_single_job(raw)
             except Exception as exc:
                 raw["detail_error"] = str(exc)
     finally:
@@ -331,7 +425,7 @@ def open_login_session(profile_dir: Path, url: str) -> None:
         context.close()
 
 
-def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False) -> Iterable[Job]:
+def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False, require_detail: bool = False) -> Iterable[Job]:
     seen: set[str] = set()
     for raw in raw_jobs:
         url = normalize_job_url(raw.get("href", ""))
@@ -341,6 +435,8 @@ def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False) -> It
         seen.add(job_id)
         card_text = raw.get("text", "")
         detail_text = _strip_linkedin_noise(raw.get("detail_text", ""))
+        if require_detail and not detail_text:
+            continue
         signal_text = " ".join(part for part in [card_text, detail_text] if part)
         description = detail_text or card_text
         yield Job(

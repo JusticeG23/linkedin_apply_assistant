@@ -5,7 +5,7 @@ Small, truthful job-discovery assistant.
 Current scope:
 
 - Open a LinkedIn search preset or URL in Playwright.
-- Extract visible job cards.
+- Extract visible job cards, then open detail pages before filtering.
 - Filter against your criteria.
 - Tag results with the search preset that found them.
 - Store results in SQLite.
@@ -57,9 +57,9 @@ jobbot discover --preset ai_infra --headful --keep-open
 jobbot discover --preset reliability --headful --keep-open
 ```
 
-Discovery opens each visible job detail page for up to 25 cards by default. This
-lets rules inspect hidden detail text such as Qualifications sections with
-hard requirements like `8+ years`.
+Discovery opens every collected job detail page before filtering. Only jobs with
+successfully extracted detail text are stored; card-only results are skipped
+because they are too low-confidence for requirements/YOE filtering.
 
 Manual URL flow:
 
