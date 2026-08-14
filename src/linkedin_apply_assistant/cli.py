@@ -35,6 +35,7 @@ def main() -> None:
     discover.add_argument("--headful", action="store_true")
     discover.add_argument("--keep-open", action="store_true")
     discover.add_argument("--max-scrolls", type=int, default=5)
+    discover.add_argument("--limit", type=int, default=5, help="Number of hydrated postings to review before DB approval.")
 
     login = sub.add_parser("login", help="Open LinkedIn and keep the browser open for manual login.")
     login.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE)
@@ -72,20 +73,25 @@ def run_discover(args: argparse.Namespace) -> None:
         profile_dir=args.profile_dir,
         headful=args.headful,
         max_scrolls=args.max_scrolls,
+        max_jobs=args.limit,
         keep_open=args.keep_open,
     )
     for job in jobs:
         job.search_preset = metadata["search_preset"]
     jobs = [classify_job(job, criteria, context_rules=context_rules) for job in jobs]
-    conn = connect(args.db)
-    upsert_jobs(conn, jobs)
 
     needs_review = sum(1 for job in jobs if job.status.value == "needs_review")
     rejected = sum(1 for job in jobs if job.status.value == "rejected")
     print(f"discovered={len(jobs)} needs_review={needs_review} rejected={rejected}")
-    print("status\tscore\tsearch_preset\ttitle\tcompany\tlocation\turl")
-    for job in sorted(jobs, key=lambda j: j.score, reverse=True)[:10]:
-        print(f"{job.status.value}\t{job.score}\t{job.search_preset}\t{job.title}\t{job.company}\t{job.location}\t{job.url}")
+
+    approved_jobs = review_jobs_for_commit(jobs)
+    if not approved_jobs:
+        print("committed=0")
+        return
+
+    conn = connect(args.db)
+    upsert_jobs(conn, approved_jobs)
+    print(f"committed={len(approved_jobs)}")
 
 
 def run_export(args: argparse.Namespace) -> None:
@@ -145,19 +151,38 @@ def print_pretty_export(rows) -> None:
         print("No jobs found.")
         return
 
+    widths = {
+        "status": 12,
+        "score": 5,
+        "preset": 18,
+        "title": 46,
+        "company": 28,
+        "location": 50,
+        "base": 10,
+        "why": 64,
+    }
+    print(_format_row(["status", "score", "preset", "title", "company", "location", "base", "why", "url"], widths))
+    print(_format_row(["-" * widths["status"], "-" * widths["score"], "-" * widths["preset"], "-" * widths["title"], "-" * widths["company"], "-" * widths["location"], "-" * widths["base"], "-" * widths["why"], "---"], widths))
     for idx, row in enumerate(rows, start=1):
         estimated_base = ""
         if row["estimated_tc"]:
             estimated_base = f"${row['estimated_tc']:,}"
         reason = row["reject_reason"] or row["fit_notes"] or "-"
-        print(f"{idx}. {row['title']} — {row['company']}")
-        print(f"   Status: {row['status']} | Score: {row['score']} | Preset: {row['search_preset'] or '-'}")
-        print(f"   Location: {row['location']}")
-        if row["salary_text"] or estimated_base:
-            print(f"   Pay: {row['salary_text'] or '-'} | Est base: {estimated_base or '-'}")
-        print(f"   Why: {reason}")
-        print(f"   URL: {row['url']}")
-        print()
+        print(_format_row(
+            [
+                row["status"],
+                str(row["score"]),
+                row["search_preset"] or "-",
+                row["title"],
+                row["company"],
+                row["location"],
+                estimated_base or "-",
+                reason,
+                row["url"],
+            ],
+            widths,
+        )
+        )
 
 
 def print_pretty_job(job) -> None:
@@ -168,13 +193,49 @@ def print_pretty_job(job) -> None:
     print(f"{job.title} — {job.company}")
     print(f"Status: {job.status.value} | Score: {job.score} | Preset: {job.search_preset or '-'}")
     work_mode = f" ({job.work_mode})" if job.work_mode else ""
-    print(f"Location: {job.location}{work_mode}")
+    print(f"Location: {_truncate(job.location + work_mode, 50)}")
     if job.salary_text or estimated_base:
         print(f"Pay: {job.salary_text or '-'} | Est base: {estimated_base or '-'}")
     print(f"Why: {reason}")
     if job.reject_reason and job.fit_notes:
         print(f"Notes: {job.fit_notes}")
     print(f"URL: {job.url}")
+
+
+def review_jobs_for_commit(jobs, input_fn=input) -> list:
+    approved = []
+    total = len(jobs)
+    for idx, job in enumerate(jobs, start=1):
+        print()
+        print(f"[{idx}/{total}]")
+        print_pretty_job(job)
+        while True:
+            answer = input_fn("Commit to DB? [y/N/q] ").strip().lower()
+            if answer in {"", "n", "no", "d", "discard"}:
+                break
+            if answer in {"y", "yes", "c", "commit"}:
+                approved.append(job)
+                break
+            if answer in {"q", "quit"}:
+                return approved
+            print("Please enter y, n, or q.")
+    return approved
+
+
+def _truncate(value: str, max_chars: int) -> str:
+    text = str(value or "")
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _format_row(values: list[str], widths: dict[str, int]) -> str:
+    keys = ["status", "score", "preset", "title", "company", "location", "base", "why"]
+    cells = [
+        _truncate(str(value), widths[key]).ljust(widths[key])
+        for key, value in zip(keys, values[: len(keys)])
+    ]
+    return "  ".join(cells + [str(values[-1])])
 
 
 def run_login(args: argparse.Namespace) -> None:

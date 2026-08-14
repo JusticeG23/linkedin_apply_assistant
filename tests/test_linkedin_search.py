@@ -5,6 +5,7 @@ from linkedin_apply_assistant.linkedin_search import (
     _location_from_detail_text,
     _location_from_page_header,
     _merge_raw_jobs,
+    _normalize_location,
     _salary_from_text,
     _search_has_easy_apply_filter,
     _strip_linkedin_noise,
@@ -141,6 +142,12 @@ def test_location_badges_are_removed():
     assert _clean_location_text("San Francisco Bay Area You’d be a top applicant Promoted") == "San Francisco Bay Area"
 
 
+def test_location_is_normalized_to_structured_length():
+    noisy = "San Francisco Bay Area with a lot of noisy LinkedIn badge text that should not be persisted"
+    assert _normalize_location(noisy) == "San Francisco Bay Area with a lot of noisy Linked…"
+    assert len(_normalize_location(noisy)) == 50
+
+
 def test_precise_location_is_extracted_from_job_header():
     page_text = (
         "ByteDance Backend Software Engineer - Platforms San Jose, CA · 6 days ago · "
@@ -165,6 +172,11 @@ def test_location_extraction_stops_at_plain_text_labels():
 def test_location_extraction_stops_at_work_model_label():
     text = "Location: San Francisco, CA Work Model: 5 Days Onsite … more Set alert"
     assert _location_from_detail_text(text) == "San Francisco, CA"
+
+
+def test_location_extraction_stops_at_about_section():
+    text = "Location: San Francisco About Greylock: Greylock is an early-stage investor"
+    assert _location_from_detail_text(text) == "San Francisco"
 
 
 def test_work_mode_prefers_hybrid_from_top_card():

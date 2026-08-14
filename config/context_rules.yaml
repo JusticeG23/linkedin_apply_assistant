@@ -1,5 +1,7 @@
 degree_required:
   reject: true
+  reason: required advanced degree
+  required_section_match: true
   anchors:
     - phd
     - ph.d
@@ -40,6 +42,8 @@ kubernetes_required:
 
 data_science_required:
   reject: true
+  reason: required data science/statistical modeling
+  required_section_match: true
   anchors:
     - data science
     - statistical modeling
@@ -58,6 +62,8 @@ data_science_required:
 
 ml_research_required:
   reject: true
+  reason: required ML/research specialization
+  required_section_match: true
   anchors:
     - research scientist
     - machine learning scientist

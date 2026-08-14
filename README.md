@@ -49,6 +49,20 @@ Recommended preset flow:
 jobbot discover --preset backend_platform --headful --keep-open
 ```
 
+By default, discovery hydrates and reviews 5 postings. Each posting is shown
+with its classification, including rejected jobs. You choose whether to commit
+each one to SQLite:
+
+```text
+Commit to DB? [y/N/q]
+```
+
+Use `--limit` when you want a larger review batch:
+
+```bash
+jobbot discover --preset backend_platform --limit 10
+```
+
 Other presets:
 
 ```bash
@@ -57,9 +71,9 @@ jobbot discover --preset ai_infra --headful --keep-open
 jobbot discover --preset reliability --headful --keep-open
 ```
 
-Discovery opens every collected job detail page before filtering. Only jobs with
-successfully extracted detail text are stored; card-only results are skipped
-because they are too low-confidence for requirements/YOE filtering.
+Discovery opens each reviewed job's detail page before filtering. Card-only
+results are skipped because they are too low-confidence for requirements/YOE
+filtering. Nothing is written to SQLite until you explicitly approve it.
 
 Manual URL flow:
 

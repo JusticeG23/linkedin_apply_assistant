@@ -62,8 +62,11 @@ def evaluate_context_rules(
                     continue
                 required_match = _best_match(context, rule.get("required_context", []), threshold)
                 if required_match is None:
-                    continue
-                phrase, score = required_match
+                    if not rule.get("required_section_match", False):
+                        continue
+                    phrase, score = "required section", 100
+                else:
+                    phrase, score = required_match
                 matches.append(
                     ContextRuleMatch(
                         rule=rule_name,

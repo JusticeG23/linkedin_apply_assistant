@@ -11,6 +11,7 @@ from .models import Job
 LINKEDIN_JOB_ID_RE = re.compile(r"(?:currentJobId=|/jobs/view/)(\d+)")
 LINKEDIN_DASH_RE = r"[-–—]"
 MONEY_SUFFIX_BOUNDARY = r"(?![\dA-Za-z])(?!(?:\s*(?:[mM]\b|million|billion)))"
+MAX_LOCATION_CHARS = 50
 
 
 def normalize_job_url(url: str) -> str:
@@ -30,6 +31,7 @@ def extract_jobs_from_page(
     profile_dir: Path,
     headful: bool,
     max_scrolls: int,
+    max_jobs: int = 5,
     keep_open: bool = False,
 ) -> list[Job]:
     from playwright.sync_api import sync_playwright
@@ -101,7 +103,8 @@ def extract_jobs_from_page(
             """
         )
         if len(raw_jobs) <= 1:
-            raw_jobs = _merge_raw_jobs(raw_jobs, _collect_selected_search_results(page, max_scrolls=max_scrolls))
+            raw_jobs = _merge_raw_jobs(raw_jobs, _collect_selected_search_results(page, max_scrolls=max_scrolls, max_jobs=max_jobs))
+        raw_jobs = raw_jobs[:max_jobs]
         _hydrate_detail_text(context, raw_jobs)
         if keep_open:
             input("Discovery finished. Press Enter here to close the browser...")
@@ -111,7 +114,7 @@ def extract_jobs_from_page(
     return list(_to_jobs(raw_jobs, search_is_easy_apply=search_is_easy_apply, require_detail=True))
 
 
-def _collect_selected_search_results(page, max_scrolls: int) -> list[dict]:
+def _collect_selected_search_results(page, max_scrolls: int, max_jobs: int) -> list[dict]:
     raw_jobs: list[dict] = []
     seen: set[str] = set()
 
@@ -137,6 +140,8 @@ def _collect_selected_search_results(page, max_scrolls: int) -> list[dict]:
                     "text": title,
                 }
             )
+            if len(raw_jobs) >= max_jobs:
+                return raw_jobs
         page.mouse.wheel(0, 900)
         page.wait_for_timeout(900)
 
@@ -262,7 +267,7 @@ def _clean_single_job(raw_job: dict) -> None:
             location_match = re.search(r"\b((?:San Francisco|San Fransisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|]*)\s*[·|]", page_text)
         if location_match:
             location = location_match.group(1).strip()
-    raw_job["location"] = _clean_location_text(location).replace("San Fransisco", "San Francisco")
+    raw_job["location"] = _normalize_location(location)
     raw_job["detail_text"] = _strip_linkedin_noise(raw_job.get("detail_text") or "")
     raw_job["work_mode"] = _work_mode_from_text(top_card_text) or _work_mode_from_text(raw_job["detail_text"])
 
@@ -273,6 +278,17 @@ def _clean_location_text(location: str) -> str:
         if marker in cleaned:
             cleaned = cleaned.split(marker, 1)[0].strip()
     return cleaned
+
+
+def _normalize_location(location: str) -> str:
+    return _truncate_location(_clean_location_text(location).replace("San Fransisco", "San Francisco"))
+
+
+def _truncate_location(location: str) -> str:
+    text = (location or "").strip()
+    if len(text) <= MAX_LOCATION_CHARS:
+        return text
+    return text[: MAX_LOCATION_CHARS - 1].rstrip() + "…"
 
 
 def _location_from_page_header(title: str, page_text: str) -> str:
@@ -315,7 +331,7 @@ def _location_from_detail_text(text: str) -> str:
     match = re.search(
         r"\bLocation\s*(?:&\s*Package)?\s*:?\s*(?:📍\s*)?"
         r"((?:San Jose|San Francisco|Mountain View|Palo Alto|Sunnyvale|Santa Clara|Menlo Park|Redwood City|San Mateo)[^·|\n]*?)"
-        r"(?=\s*(?:🏠|•|·|…|Company Stage|Office Type|Salary|Company Description|Working Model|Work Model|$))",
+        r"(?=\s*(?:🏠|•|·|…|About|Company Stage|Office Type|Salary|Company Description|Working Model|Work Model|$))",
         text or "",
         re.I,
     )
@@ -443,7 +459,7 @@ def _to_jobs(raw_jobs: Iterable[dict], search_is_easy_apply: bool = False, requi
             job_id=job_id,
             title=(raw.get("title") or "").strip(),
             company=(raw.get("company") or "").strip(),
-            location=(raw.get("location") or "").strip(),
+            location=_normalize_location(raw.get("location") or ""),
             url=url,
             easy_apply=search_is_easy_apply or _card_has_easy_apply_signal(signal_text),
             salary_text=_salary_from_text(signal_text),

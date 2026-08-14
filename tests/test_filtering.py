@@ -67,6 +67,26 @@ def test_rejects_high_yoe():
     assert "hard YOE" in result.reject_reason
 
 
+def test_rejects_machine_learning_engineer_title():
+    criteria = {
+        **CRITERIA,
+        "reject_role_terms": ["machine learning engineer"],
+    }
+    job = Job(
+        job_id="ml-engineer",
+        title="Principal Machine Learning Engineer",
+        company="Example",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/ml-engineer/",
+        easy_apply=True,
+        salary_text="$300k-$500k",
+        description="Requirements Strong software engineering and ML systems background.",
+    )
+    result = classify_job(job, criteria)
+    assert result.status == JobStatus.REJECTED
+    assert "role mismatch: machine learning engineer" in result.reject_reason
+
+
 def test_does_not_reject_preferred_phd_alternative():
     job = Job(
         job_id="preferred-phd",
