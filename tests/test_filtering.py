@@ -67,6 +67,22 @@ def test_rejects_high_yoe():
     assert "hard YOE" in result.reject_reason
 
 
+def test_yoe_range_with_plus_uses_lower_bound():
+    job = Job(
+        job_id="yoe-range-plus",
+        title="Backend Engineer",
+        company="Example",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/yoe-range-plus/",
+        easy_apply=True,
+        salary_text="$200k-$250k",
+        description="Minimum Requirements 2–12+ years of professional hands-on software development experience.",
+    )
+    result = classify_job(job, CRITERIA)
+    assert result.status == JobStatus.NEEDS_REVIEW
+    assert "hard YOE" not in result.reject_reason
+
+
 def test_rejects_machine_learning_engineer_title():
     criteria = {
         **CRITERIA,

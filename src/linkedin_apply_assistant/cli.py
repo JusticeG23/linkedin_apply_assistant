@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import sys
 from pathlib import Path
 
 from .criteria import classify_job, load_criteria
 from .context_rules import load_context_rules
+from .job_sections import section_headers, section_text, split_job_sections
+from .llm_judge import LlmJudgment, build_judge_payload, judge_job_with_llm
 from .linkedin_search import extract_job_from_url, extract_jobs_from_page, open_login_session
+from .models import Job, JobStatus
 from .search_url import build_linkedin_search_url, load_search_presets
 from .storage import connect, export_jobs, upsert_jobs
 
@@ -47,6 +51,10 @@ def main() -> None:
     preview.add_argument("--context-rules", type=Path, default=DEFAULT_CONTEXT_RULES)
     preview.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE)
     preview.add_argument("--headful", action="store_true")
+    preview.add_argument("--debug-sections", action="store_true", help="Print extracted metadata and job sections before rule checks.")
+    preview.add_argument("--llm-rules", action="store_true", help="Print an advisory LLM required/preferred gap check.")
+    preview.add_argument("--force-llm", action="store_true", help="Run --llm-rules even when cheap deterministic filters reject the job.")
+    preview.add_argument("--llm-model", default=None, help="Override OPENAI_MODEL for --llm-rules.")
 
     export = sub.add_parser("export", help="Export queued jobs as TSV.")
     export.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -142,8 +150,20 @@ def run_preview(args: argparse.Namespace) -> None:
         profile_dir=args.profile_dir,
         headful=args.headful,
     )
+    if args.debug_sections:
+        print_section_debug(job)
+        print()
     job = classify_job(job, criteria, context_rules=context_rules)
-    print_pretty_job(job)
+    print_preview_report(job)
+    if args.llm_rules:
+        print()
+        if args.force_llm or should_run_llm(job):
+            try:
+                print_llm_judgment(judge_job_with_llm(job, model=args.llm_model))
+            except RuntimeError as exc:
+                print(f"LLM rule check skipped: {exc}")
+        else:
+            print(f"LLM rule check skipped: cheap deterministic reject ({job.reject_reason}).")
 
 
 def print_pretty_export(rows) -> None:
@@ -202,6 +222,95 @@ def print_pretty_job(job) -> None:
     print(f"URL: {job.url}")
 
 
+def print_preview_report(job: Job) -> None:
+    estimated_base = f"${job.estimated_tc:,}" if job.estimated_tc else "-"
+    reason = job.reject_reason or job.fit_notes or "-"
+    confidence = preview_confidence(job)
+    work_mode = f" ({job.work_mode})" if job.work_mode else ""
+
+    print(f"Title: {job.title}")
+    print(f"Company: {job.company}")
+    print(f"Location: {_truncate(job.location + work_mode, 80)}")
+    print(f"Base: {estimated_base}")
+    print(f"Easy Apply: {job.easy_apply}")
+    print(f"Decision: {job.status.value}")
+    print(f"Confidence: {confidence}")
+    print(f"Why: {reason}")
+
+    evidence = preview_evidence(job)
+    if evidence:
+        print("Evidence:")
+        for item in evidence:
+            print(f"- {item}")
+
+    print_section_summary(job)
+    print("TSV:")
+    print(to_tsv_row(job))
+    print(f"URL: {job.url}")
+
+
+def preview_confidence(job: Job) -> str:
+    if job.status == JobStatus.NEEDS_REVIEW:
+        return "medium"
+    reason = job.reject_reason.lower()
+    if any(term in reason for term in ["not easy apply", "location outside", "estimated base below", "role mismatch", "hard yoe"]):
+        return "high"
+    return "medium"
+
+
+def preview_evidence(job: Job) -> list[str]:
+    evidence: list[str] = []
+    reason = job.reject_reason.lower()
+    if "not easy apply" in reason:
+        evidence.append("Easy Apply signal was not found on the detail/search page.")
+    if "location outside" in reason:
+        evidence.append(f"Extracted location: {job.location or '-'}; work mode: {job.work_mode or '-'}.")
+    if "estimated base below" in reason:
+        evidence.append(f"Extracted salary text: {job.salary_text or '-'}; estimated base: ${job.estimated_tc:,}.")
+    if "hard yoe" in reason:
+        evidence.append("Required/qualification section contains a years-of-experience minimum above the configured maximum.")
+    if "role mismatch" in reason:
+        evidence.append(f"Extracted title/company: {job.title} — {job.company}.")
+    return evidence
+
+
+def print_section_summary(job: Job) -> None:
+    sections = split_job_sections(job.description)
+    required_headers = section_headers(sections, {"required", "qualifications"})
+    preferred_headers = section_headers(sections, {"preferred"})
+    required_text = _truncate(section_text(sections, {"required", "qualifications"}), 280) or "-"
+    preferred_text = _truncate(section_text(sections, {"preferred"}), 220) or "-"
+    print("Required sections:")
+    print(f"- Headers: {', '.join(required_headers) if required_headers else '-'}")
+    print(f"- Body: {required_text}")
+    print("Preferred sections:")
+    print(f"- Headers: {', '.join(preferred_headers) if preferred_headers else '-'}")
+    print(f"- Body: {preferred_text}")
+
+
+def to_tsv_row(job: Job) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter="\t", lineterminator="")
+    writer.writerow([
+        job.title,
+        job.company,
+        job.location,
+        job.status.value,
+        f"${job.estimated_tc:,}" if job.estimated_tc else "",
+        job.reject_reason or job.fit_notes,
+        job.url,
+    ])
+    return buffer.getvalue()
+
+
+def should_run_llm(job: Job) -> bool:
+    if job.status == JobStatus.NEEDS_REVIEW:
+        return True
+    reason = job.reject_reason.lower()
+    cheap_rejects = ["not easy apply", "location outside", "estimated base below", "role mismatch"]
+    return not any(term in reason for term in cheap_rejects)
+
+
 def review_jobs_for_commit(jobs, input_fn=input) -> list:
     approved = []
     total = len(jobs)
@@ -220,6 +329,39 @@ def review_jobs_for_commit(jobs, input_fn=input) -> list:
                 return approved
             print("Please enter y, n, or q.")
     return approved
+
+
+def print_llm_judgment(judgment: LlmJudgment) -> None:
+    print("LLM rule check:")
+    print(f"Decision: {judgment.decision}")
+    if judgment.role_family:
+        print(f"Role family: {judgment.role_family}")
+    if judgment.required_yoe_min is not None:
+        print(f"Required YOE min: {judgment.required_yoe_min}")
+    print(f"Hard gaps: {', '.join(judgment.hard_gaps) if judgment.hard_gaps else 'none'}")
+    print(f"Soft gaps: {', '.join(judgment.soft_gaps) if judgment.soft_gaps else 'none'}")
+    if judgment.required_skills:
+        print(f"Required skills: {', '.join(judgment.required_skills)}")
+    if judgment.preferred_skills:
+        print(f"Preferred skills: {', '.join(judgment.preferred_skills)}")
+    if judgment.reason:
+        print(f"Reason: {judgment.reason}")
+
+
+def print_section_debug(job) -> None:
+    payload = build_judge_payload(job)
+    print("Extracted payload:")
+    print(f"Title: {payload['title']}")
+    print(f"Company: {payload['company']}")
+    print(f"Location: {payload['location']}")
+    print(f"Work mode: {payload['work_mode'] or '-'}")
+    print(f"Salary: {payload['salary_text'] or '-'}")
+    print(f"Easy Apply: {payload['easy_apply']}")
+    print("Sections:")
+    for idx, section in enumerate(payload["sections"], start=1):
+        body = _truncate(section["body"], 600)
+        print(f"[{idx}] {section['kind']} | {section['header']}")
+        print(f"    {body}")
 
 
 def _truncate(value: str, max_chars: int) -> str:

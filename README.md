@@ -2,14 +2,19 @@
 
 Small, truthful job-discovery assistant.
 
-Current scope:
+Current MVP scope:
 
-- Open a LinkedIn search preset or URL in Playwright.
-- Extract visible job cards, then open detail pages before filtering.
+- Preview one LinkedIn job URL as a job-fit lint report.
+- Open the canonical detail page before filtering.
+- Extract top metadata and cleaned job-description sections.
 - Filter against your criteria.
-- Tag results with the search preset that found them.
-- Store results in SQLite.
-- Export TSV for review.
+- Print evidence, required/preferred section summaries, and a copyable TSV row.
+- Optionally run an advisory LLM section judge after cheap deterministic filters.
+
+Still available, but not the current MVP focus:
+
+- Search/discovery.
+- SQLite commit/export flow.
 
 Not current scope:
 
@@ -103,6 +108,25 @@ Preview one job without writing to SQLite:
 ```bash
 jobbot preview --job-url "https://www.linkedin.com/jobs/view/4451659487/" --headful
 ```
+
+Print extracted sections before classification:
+
+```bash
+jobbot preview --job-url "https://www.linkedin.com/jobs/view/4451659487/" --headful --debug-sections
+```
+
+Preview one job with the advisory LLM section judge:
+
+```bash
+OPENAI_API_KEY=... jobbot preview --job-url "https://www.linkedin.com/jobs/view/4451659487/" --headful --llm-rules
+```
+
+The LLM check uses the canonical detail page, sends only the top job metadata
+and cleaned job-description sections, and prints its required/preferred gap
+read below the deterministic classifier result. It does not write to SQLite.
+If cheap deterministic filters reject a job for things like location, role
+mismatch, Easy Apply, or base pay, the LLM call is skipped to save spend. Use
+`--force-llm` when you explicitly want to inspect the LLM read anyway.
 
 Pretty export is the default. Use TSV when you want spreadsheet-friendly output:
 

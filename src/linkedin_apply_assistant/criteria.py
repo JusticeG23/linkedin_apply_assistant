@@ -23,7 +23,7 @@ COMP_RANGE_RE = re.compile(
     rf"\s*[-–—]\s*\$?\s*(\d+(?:,\d{{3}})?)([kK])?{MONEY_SUFFIX_BOUNDARY}(?:\s*(?:/yr|/year|a year))?",
     re.I,
 )
-YOE_RANGE_RE = re.compile(r"(?<![\d.])(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:years|yrs|year)", re.I)
+YOE_RANGE_RE = re.compile(r"(?<![\d.])(\d{1,2})\s*[-–—]\s*(\d{1,2})\+?\s*(?:years|yrs|year)", re.I)
 YOE_PLUS_RE = re.compile(r"(?<![\d.])(\d{1,2})\s*\+?\s*(?:years|yrs|year)", re.I)
 
 HYBRID_TERMS = ["hybrid"]
@@ -116,6 +116,15 @@ def _required_min_yoe(text: str) -> Optional[int]:
         requirements.append(int(match.group(1)))
 
     return max(requirements) if requirements else None
+
+
+def required_min_yoe_for_job(job: Job) -> Optional[int]:
+    sections = split_job_sections(job.description)
+    hard_filter_text = " ".join([
+        section_text(sections, {"required"}),
+        section_text(sections, {"qualifications"}),
+    ]).strip()
+    return _required_min_yoe(hard_filter_text or job.description)
 
 
 def _location_allowed(job: Job, criteria: dict[str, Any], full_text: str) -> bool:
