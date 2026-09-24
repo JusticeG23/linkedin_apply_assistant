@@ -40,6 +40,26 @@ not develop it further. Before later deletion/replacement, save a rollback copy.
 **Reason:** The working tree includes substantial uncommitted work. Reversible
 transition avoids accidental loss while prioritizing Greenhouse POC.
 
+## D-005: Accept both Greenhouse hosted-board domains
+
+**Decision:** Accept only HTTPS URLs on `boards.greenhouse.io` or
+`job-boards.greenhouse.io` with `/{board_token}/jobs/{numeric_job_id}` path.
+Reject custom domains and alternate shapes.
+
+**Reason:** User-supplied Twitch posting uses `job-boards.greenhouse.io`; keep
+host validation strict while supporting this official Greenhouse board URL.
+
+## D-006: Use data-platform resume sources for Twitch trial
+
+**Decision:** For Twitch `8817023002`, use Markdown and PDF from
+`role_family_build/data_platform/` under user-designated resume root. Use
+`role_family_build/short_form_answers.md` only for directly relevant
+user-authored answers. Do not call an LLM or regenerate PDFs during this trial.
+
+**Reason:** Posting is a Data Platform role and user designated this directory as
+resume source of truth. Both existing PDFs have identical SHA-256 and are newer
+than `resume.md`; no generation needed.
+
 ## Legacy LinkedIn decisions
 
 These apply only to the retired LinkedIn flow; they are not Greenhouse POC

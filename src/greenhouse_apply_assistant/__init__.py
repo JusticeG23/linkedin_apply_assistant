@@ -10,6 +10,7 @@ from .client import (
     fetch_greenhouse_job,
     parse_job_url,
 )
+from .plan import build_application_plan, generate_application_plan
 
 __all__ = [
     "FetchError",
@@ -20,4 +21,6 @@ __all__ = [
     "JobUrl",
     "fetch_greenhouse_job",
     "parse_job_url",
+    "build_application_plan",
+    "generate_application_plan",
 ]

@@ -38,6 +38,7 @@ class MockResponse:
         "https://user@boards.greenhouse.io/acme/jobs/123",
         "https://boards.greenhouse.io:443/acme/jobs/123",
         "https://boards.greenhouse.io/acme/jobs/123?source=share",
+        "https://job-boards.greenhouse.io/acme/jobs/123?source=share",
         "https://boards.greenhouse.io/acme/jobs/123#apply",
         "https://boards.greenhouse.io/acme/jobs/123/anything",
         "https://boards.greenhouse.io/acme/123",
@@ -58,6 +59,7 @@ def test_rejects_unapproved_or_invalid_job_urls(url):
     [
         ("https://boards.greenhouse.io/acme/jobs/123", "acme", 123),
         ("https://boards.greenhouse.io/acme-board_2/jobs/456/", "acme-board_2", 456),
+        ("https://job-boards.greenhouse.io/twitch/jobs/8817023002", "twitch", 8817023002),
     ],
 )
 def test_parses_approved_job_url(url, board_token, job_id):

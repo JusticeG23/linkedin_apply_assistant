@@ -6,7 +6,8 @@ must still follow existing human-review and no-submit constraints.
 ## One-URL inspection
 
 - Accept one public Greenhouse hosted-board URL shaped as
-  `https://boards.greenhouse.io/{board_token}/jobs/{job_id}`. Reject unrecognized
+  `https://{host}/{board_token}/jobs/{job_id}`, where `host` is exactly
+  `boards.greenhouse.io` or `job-boards.greenhouse.io`. Reject unrecognized
   hosts/paths rather than guessing board identity.
 - Read form definition from the public, unauthenticated endpoint:
   `GET https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs/{job_id}?questions=true`.
@@ -91,8 +92,8 @@ completed form immediately before submission and report that state.
 
 ## Accepted defaults
 
-- Restrict initial URL input to the stated hosted-board path; do not infer
-  support for custom career-site domains or alternate URL shapes.
+- Restrict URL input to the two named Greenhouse hosted-board hosts and stated
+  path; do not infer support for custom career-site domains or alternate shapes.
 - Required manual/sensitive fields stop automation and are reported; optional
   manual/sensitive fields remain untouched.
 - Human approval is per proposed value. Optional demographic fields remain

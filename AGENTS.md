@@ -3,9 +3,9 @@
 ## Project
 
 Build Greenhouse-only, one-URL application-preparation POC. User reviews and
-submits. Current slice: read-only inspector in `src/greenhouse_apply_assistant/`;
-local plan and browser fill are next. Full suite: 114 tests pass; no live
-Greenhouse flow validated.
+submits. Current code has read-only inspection, plan generation, and partial
+fill/read-back helpers in `src/greenhouse_apply_assistant/`. Full suite: 125
+tests pass. Twitch form attempt remains blocked before final review.
 
 ## Hard constraints
 

@@ -10,17 +10,28 @@ infer requirements beyond it.
 
 - Approved Greenhouse starting contract; paused LinkedIn development until POC
   passes.
-- Added read-only one-URL inspection client and mocked tests (27 focused; 114
-  full-suite passes). No live API or POST used.
+- Added read-only inspection and local plan generation; full suite passes.
+- Exercised Twitch plan through public GET. Output: 25 application, 3 compliance,
+  and 3 location questions; 24 blockers remain because no local profile, resume,
+  or approved answers were supplied. No browser, LLM, application POST, or submit.
+- Synthetic coverage tests required cover letter, location, demographic-object,
+  and consent branches.
+- Attempted local headed-browser fill with profile and data-platform resume. Five
+  profile controls read back; PDF verified. Eighteen required questions remain,
+  phone-country read-back unstable, and CAPTCHA remains unsolved. No submit.
 
 ## Active work
 
-- [ ] Implement local application-plan generation using agreed field
-      normalization and schema.
-- [ ] Implement approved answer policy and Playwright fill/upload/read-back;
-      block unsupported required fields and required cover letters, never submit.
+- [ ] Make Twitch fill repeatable from approved local inputs and resolve supported
+      contact-country read-back. Keep unsupported questions, CAPTCHA, and unknown
+      legal/employment answers for human input; never submit.
 - [ ] Add endpoint/DOM fixtures and verify one end-to-end Greenhouse POC path
       stops at the agreed pre-submit state.
+- [ ] After review and validation, commit and push relevant files without force;
+      exclude IDE/scratch files and private/generated data.
+- [ ] After review and validation, commit and push only relevant Greenhouse POC,
+      project-state, and approved agent-policy files. Exclude IDE/scratch files,
+      stale legacy notes, and private/generated data.
 
 ## Superseded by Greenhouse POC
 
@@ -31,6 +42,7 @@ removal.
 
 ## Validation baseline
 
-`.venv/bin/pytest -q` — 114 passed. This includes mocked Greenhouse URL/API
-tests; no live API, browser, or application-submit flow has been exercised.
+`.venv/bin/pytest -q` — 125 passed. Twitch public GET and local browser fill
+attempt ran; no LLM, application POST, or submission flow was used. Form has not
+reached final review.
 `.venv/bin/jobbot --help` still works for legacy CLI.

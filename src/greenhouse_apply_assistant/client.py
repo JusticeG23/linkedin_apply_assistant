@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 
 _JOB_URL = re.compile(
-    r"https://boards\.greenhouse\.io/([A-Za-z0-9_-]+)/jobs/([0-9]+)/?"
+    r"https://(?:boards|job-boards)\.greenhouse\.io/([A-Za-z0-9_-]+)/jobs/([0-9]+)/?"
 )
 _API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
@@ -54,7 +54,8 @@ def parse_job_url(value: str) -> JobUrl:
     match = _JOB_URL.fullmatch(value)
     if match is None:
         raise InvalidJobUrlError(
-            "expected https://boards.greenhouse.io/{board_token}/jobs/{numeric_job_id}"
+            "expected https://boards.greenhouse.io/{board_token}/jobs/{numeric_job_id} "
+            "or https://job-boards.greenhouse.io/{board_token}/jobs/{numeric_job_id}"
         )
 
     board_token, job_id_text = match.groups()

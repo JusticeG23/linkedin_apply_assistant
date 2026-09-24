@@ -6,9 +6,8 @@ Last reviewed: 2026-09-23
 
 Project direction has pivoted from LinkedIn job discovery/Easy Apply to Ethan's
 Greenhouse-only, one-URL application-preparation POC. Current source tree is the
-legacy LinkedIn baseline plus an isolated read-only Greenhouse inspector. No
-end-to-end Greenhouse application flow exists yet. Do not treat inspection tests
-as browser/application validation.
+legacy LinkedIn baseline plus Greenhouse inspection, plan generation, and partial
+fill/read-back helpers. End-to-end browser application flow remains incomplete.
 
 ## Legacy implementation
 
@@ -25,7 +24,12 @@ Approved contract defaults are recorded in
 local plan generation and browser fill/verification remain unimplemented. Source
 files stay in place until the POC passes and rollback copy is saved.
 
-`.venv/bin/pytest -q` — 114 passed, including mocked Greenhouse URL/API
-inspection tests. No live API, browser, form-fill, or submission workflow was
-run. See `PLAN.md`, `TASKS.md`, and `DECISIONS.md` for canonical target, sequence,
-and safety constraints.
+Twitch job `8817023002` was inspected with public GET. Plan includes 25
+application, 3 compliance, and 3 location questions; 24 required-input blockers
+remained without applicant/resume inputs. A local headed-browser attempt then
+filled/read back five profile controls and verified PDF; 18 required questions,
+one phone-country read-back issue, and CAPTCHA still block final review. Initial
+plan omitted location questions; synthetic tests caught/fixed this. Coverage
+includes location, demographic-object, required-cover-letter, and consent
+branches. `.venv/bin/pytest -q` — 125 passed. No LLM, application POST, or final
+submission ran. See `PLAN.md`, `TASKS.md`, and `DECISIONS.md` for canonical state.

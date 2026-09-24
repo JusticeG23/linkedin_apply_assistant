@@ -22,12 +22,14 @@ submits.
 
 ## Current state and transition
 
-The repository currently contains a LinkedIn CLI and substantial uncommitted
-implementation. That is a legacy baseline, not the target POC. Do not extend
-LinkedIn-specific features; retain existing work until the Greenhouse POC
-passes, then save a rollback copy before cleanup. The 114-test suite covers
-legacy behavior plus mocked Greenhouse inspection; no live Greenhouse flow is
-validated.
+The repository contains a LinkedIn CLI and substantial legacy implementation,
+plus isolated Greenhouse inspection and plan-generation code. Do not extend
+LinkedIn features; retain that code until POC passes, then save a rollback copy
+before cleanup. Twitch plan generation identified missing applicant/resume inputs.
+A local headed-browser attempt then filled and read back 5 profile controls and
+verified selected PDF. Eighteen required API blockers, one unstable phone-country
+control, and CAPTCHA remain; form did not reach final review. Full suite: 125
+tests pass.
 
 Ethan's draft had blank implementation contracts. Their starting defaults are
 now approved in `artifacts/greenhouse-contract-proposal.md`: inspection endpoint,
@@ -43,7 +45,7 @@ evidence requires a change.
    develop it further or delete it during the POC transition.
 3. Inspect one Greenhouse application and produce a local plan containing field
    type/options/required status, proposed values, sources, evidence, confidence,
-   and verification status.
+   and verification status — complete for Twitch; plan reports missing inputs.
 4. Apply only policy-approved plan values; upload the selected PDF; read back and
    verify values; report blockers; stop at the agreed pre-submit state.
 5. Add mocked endpoint/DOM fixtures for extraction, answer policy, upload,

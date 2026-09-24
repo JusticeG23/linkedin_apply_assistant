@@ -3,8 +3,9 @@
 > **Project pivot in progress:** target is a Greenhouse-only, one-URL
 > application-preparation POC. Existing instructions below describe the legacy
 > LinkedIn CLI and are not the new POC interface. Greenhouse support currently
-> consists only of a read-only inspection library; no application UI/CLI flow is
-> wired yet.
+> consists of read-only inspection and local plan-generation libraries; no
+> complete browser application flow is wired yet; partial fill/read-back
+> helpers are under development.
 
 Legacy LinkedIn job-discovery assistant.
 
