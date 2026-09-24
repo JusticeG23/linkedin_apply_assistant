@@ -6,10 +6,12 @@ import io
 import sys
 from pathlib import Path
 
+from .applicant import load_applicant_profile, resolve_resume_path
 from .criteria import classify_job, load_criteria
 from .context_rules import load_context_rules
 from .job_sections import section_headers, section_text, split_job_sections
 from .llm_judge import LlmJudgment, build_judge_payload, judge_job_with_llm
+from .linkedin_apply import ApplyResult, fill_linkedin_easy_apply
 from .linkedin_search import extract_job_from_url, extract_jobs_from_page, open_login_session
 from .models import Job, JobStatus
 from .search_url import build_linkedin_search_url, load_search_presets
@@ -22,6 +24,8 @@ DEFAULT_CRITERIA = ROOT / "config" / "criteria.yaml"
 DEFAULT_CONTEXT_RULES = ROOT / "config" / "context_rules.yaml"
 DEFAULT_SEARCHES = ROOT / "config" / "searches.yaml"
 DEFAULT_PROFILE = ROOT / "data" / "browser-profile"
+DEFAULT_APPLICANT = ROOT / "config" / "applicant.yaml"
+DEFAULT_RESUME_ROOT = Path("/Users/jbgarner/Documents/resume/role_families")
 
 
 def main() -> None:
@@ -54,12 +58,22 @@ def main() -> None:
     preview.add_argument("--debug-sections", action="store_true", help="Print extracted metadata and job sections before rule checks.")
     preview.add_argument("--llm-rules", action="store_true", help="Print an advisory LLM required/preferred gap check.")
     preview.add_argument("--force-llm", action="store_true", help="Run --llm-rules even when cheap deterministic filters reject the job.")
+    preview.add_argument("--debug-llm", action="store_true", help="Print exact LLM request JSON and raw response without headers or API key.")
     preview.add_argument("--llm-model", default=None, help="Override OPENAI_MODEL for --llm-rules.")
 
     export = sub.add_parser("export", help="Export queued jobs as TSV.")
     export.add_argument("--db", type=Path, default=DEFAULT_DB)
     export.add_argument("--status", default=None)
     export.add_argument("--format", choices=["pretty", "tsv"], default="pretty")
+
+    apply = sub.add_parser("apply", help="Fill LinkedIn Easy Apply and pause before final submit.")
+    apply.add_argument("--job-url", required=True)
+    apply.add_argument("--resume-family", required=True)
+    apply.add_argument("--applicant", type=Path, default=DEFAULT_APPLICANT)
+    apply.add_argument("--resume-root", type=Path, default=DEFAULT_RESUME_ROOT)
+    apply.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE)
+    apply.add_argument("--headless", action="store_true")
+    apply.add_argument("--close-when-done", action="store_true")
 
     args = parser.parse_args()
     if args.cmd == "discover":
@@ -70,6 +84,8 @@ def main() -> None:
         run_preview(args)
     elif args.cmd == "export":
         run_export(args)
+    elif args.cmd == "apply":
+        run_apply(args)
 
 
 def run_discover(args: argparse.Namespace) -> None:
@@ -159,7 +175,7 @@ def run_preview(args: argparse.Namespace) -> None:
         print()
         if args.force_llm or should_run_llm(job):
             try:
-                print_llm_judgment(judge_job_with_llm(job, model=args.llm_model))
+                print_llm_judgment(judge_job_with_llm(job, model=args.llm_model, debug=args.debug_llm))
             except RuntimeError as exc:
                 print(f"LLM rule check skipped: {exc}")
         else:
@@ -334,22 +350,16 @@ def review_jobs_for_commit(jobs, input_fn=input) -> list:
 def print_llm_judgment(judgment: LlmJudgment) -> None:
     print("LLM rule check:")
     print(f"Decision: {judgment.decision}")
+    print(f"Confidence: {judgment.confidence}")
     if judgment.role_family:
         print(f"Role family: {judgment.role_family}")
-    if judgment.required_yoe_min is not None:
-        print(f"Required YOE min: {judgment.required_yoe_min}")
-    print(f"Hard gaps: {', '.join(judgment.hard_gaps) if judgment.hard_gaps else 'none'}")
-    print(f"Soft gaps: {', '.join(judgment.soft_gaps) if judgment.soft_gaps else 'none'}")
-    if judgment.required_skills:
-        print(f"Required skills: {', '.join(judgment.required_skills)}")
-    if judgment.preferred_skills:
-        print(f"Preferred skills: {', '.join(judgment.preferred_skills)}")
     if judgment.reason:
         print(f"Reason: {judgment.reason}")
 
 
 def print_section_debug(job) -> None:
     payload = build_judge_payload(job)
+    sections = split_job_sections(job.description)
     print("Extracted payload:")
     print(f"Title: {payload['title']}")
     print(f"Company: {payload['company']}")
@@ -357,10 +367,11 @@ def print_section_debug(job) -> None:
     print(f"Work mode: {payload['work_mode'] or '-'}")
     print(f"Salary: {payload['salary_text'] or '-'}")
     print(f"Easy Apply: {payload['easy_apply']}")
+    print(f"LLM required sections: {len(payload['required_sections'])}")
     print("Sections:")
-    for idx, section in enumerate(payload["sections"], start=1):
-        body = _truncate(section["body"], 600)
-        print(f"[{idx}] {section['kind']} | {section['header']}")
+    for idx, section in enumerate(sections, start=1):
+        body = _truncate(section.text, 600)
+        print(f"[{idx}] {section.kind} | {section.header or 'Overview'}")
         print(f"    {body}")
 
 
@@ -382,6 +393,44 @@ def _format_row(values: list[str], widths: dict[str, int]) -> str:
 
 def run_login(args: argparse.Namespace) -> None:
     open_login_session(profile_dir=args.profile_dir, url=args.url)
+
+
+def run_apply(args: argparse.Namespace) -> None:
+    applicant = load_applicant_profile(args.applicant)
+    resume_path = resolve_resume_path(args.resume_root, args.resume_family)
+    result = fill_linkedin_easy_apply(
+        job_url=args.job_url,
+        profile_dir=args.profile_dir,
+        resume_path=resume_path,
+        applicant=applicant,
+        headless=args.headless,
+        keep_open=not args.close_when_done,
+    )
+    print_apply_result(result)
+
+
+def print_apply_result(result: ApplyResult) -> None:
+    print("Apply fill result:")
+    print(f"URL: {result.job_url}")
+    print(f"Resume: {result.resume_path}")
+    print(f"Reached submit review: {result.reached_submit_review}")
+    if result.step_history:
+        print(f"Steps seen: {' -> '.join(result.step_history)}")
+    if result.filled_fields:
+        print("Filled:")
+        for field in result.filled_fields:
+            print(f"- {field}")
+    if result.unknown_required_fields:
+        print("Unknown required fields:")
+        for field in result.unknown_required_fields:
+            print(f"- {field}")
+    if result.blockers:
+        print("Blockers:")
+        for blocker in result.blockers:
+            print(f"- {blocker}")
+    if result.kept_open:
+        print("Browser was kept open for manual review before closing.")
+    print("No final submit was clicked.")
 
 
 def resolve_search(args: argparse.Namespace) -> tuple[str, dict[str, str]]:

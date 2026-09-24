@@ -52,6 +52,42 @@ def test_accepts_linkedin_infra_role():
     assert result.estimated_tc == 205000
 
 
+def test_rejects_non_easy_apply_by_default():
+    job = Job(
+        job_id="non-easy",
+        title="Software Engineer",
+        company="Example",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/non-easy/",
+        easy_apply=False,
+        salary_text="$200k-$250k",
+        description="Minimum Requirements 3+ years backend engineering.",
+    )
+    result = classify_job(job, CRITERIA)
+    assert result.status == JobStatus.REJECTED
+    assert "not Easy Apply" in result.reject_reason
+
+
+def test_easy_apply_requirement_can_be_disabled():
+    criteria = {
+        **CRITERIA,
+        "require_easy_apply": False,
+    }
+    job = Job(
+        job_id="non-easy-ok",
+        title="Software Engineer",
+        company="Example",
+        location="Mountain View, CA",
+        url="https://www.linkedin.com/jobs/view/non-easy-ok/",
+        easy_apply=False,
+        salary_text="$200k-$250k",
+        description="Minimum Requirements 3+ years backend engineering.",
+    )
+    result = classify_job(job, criteria)
+    assert result.status == JobStatus.NEEDS_REVIEW
+    assert "not Easy Apply" not in result.reject_reason
+
+
 def test_rejects_high_yoe():
     job = Job(
         job_id="2",

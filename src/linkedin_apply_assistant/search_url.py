@@ -27,9 +27,23 @@ def load_search_presets(path: Path) -> dict[str, dict[str, Any]]:
     if yaml is None:
         raise RuntimeError("Search presets require PyYAML. Run: pip install -e .")
     with path.open("r", encoding="utf-8") as fh:
-        presets = yaml.safe_load(fh)
-    if not isinstance(presets, dict):
+        raw_presets = yaml.safe_load(fh)
+    if not isinstance(raw_presets, dict):
         raise ValueError(f"Search preset file must contain a mapping: {path}")
+
+    defaults = raw_presets.get("defaults", {})
+    if defaults is None:
+        defaults = {}
+    if not isinstance(defaults, dict):
+        raise ValueError(f"Search preset defaults must be a mapping: {path}")
+
+    presets: dict[str, dict[str, Any]] = {}
+    for name, preset in raw_presets.items():
+        if name == "defaults":
+            continue
+        if not isinstance(preset, dict):
+            raise ValueError(f"Search preset {name!r} must be a mapping: {path}")
+        presets[name] = {**defaults, **preset}
     return presets
 
 

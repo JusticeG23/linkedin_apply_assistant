@@ -1,8 +1,14 @@
 # LinkedIn Apply Assistant
 
-Small, truthful job-discovery assistant.
+> **Project pivot in progress:** target is a Greenhouse-only, one-URL
+> application-preparation POC. Existing instructions below describe the legacy
+> LinkedIn CLI and are not the new POC interface. Greenhouse support currently
+> consists only of a read-only inspection library; no application UI/CLI flow is
+> wired yet.
 
-Current MVP scope:
+Legacy LinkedIn job-discovery assistant.
+
+Legacy LinkedIn CLI capabilities:
 
 - Preview one LinkedIn job URL as a job-fit lint report.
 - Open the canonical detail page before filtering.
@@ -18,8 +24,8 @@ Still available, but not the current MVP focus:
 
 Not current scope:
 
-- Auto-submitting applications.
 - Guessing answers.
+- Auto-submitting applications without manual review.
 - Misrepresenting skills.
 
 ## Setup
@@ -121,9 +127,11 @@ Preview one job with the advisory LLM section judge:
 OPENAI_API_KEY=... jobbot preview --job-url "https://www.linkedin.com/jobs/view/4451659487/" --headful --llm-rules
 ```
 
-The LLM check uses the canonical detail page, sends only the top job metadata
-and cleaned job-description sections, and prints its required/preferred gap
-read below the deterministic classifier result. It does not write to SQLite.
+The LLM check uses the canonical detail page and sends only top job metadata
+plus required/minimum qualification sections. Preferred, overview, and
+responsibility sections are intentionally omitted to reduce token spend. The
+LLM result prints below the deterministic classifier result. It does not write
+to SQLite.
 If cheap deterministic filters reject a job for things like location, role
 mismatch, Easy Apply, or base pay, the LLM call is skipped to save spend. Use
 `--force-llm` when you explicitly want to inspect the LLM read anyway.
@@ -142,6 +150,54 @@ search_preset
 
 Use the preset later to pick the right tailored resume packet for each candidate.
 
+## LinkedIn Easy Apply Fill
+
+After a role passes preview and you want to apply, use:
+
+```bash
+jobbot apply \
+  --job-url "https://www.linkedin.com/jobs/view/4296093604/" \
+  --resume-family backend_engineer
+```
+
+The command:
+
+- opens the canonical LinkedIn job detail page
+- clicks Easy Apply when available
+- attaches the matching PDF from `/Users/jbgarner/Documents/resume/role_families/<resume_family>/`
+- fills only known safe fields from `config/applicant.yaml`
+- stops on unknown required fields, free-text questions, or blockers
+- pauses before final submit so you can inspect everything yourself
+
+It never clicks `Submit application`.
+
+Applicant config:
+
+```bash
+cp config/applicant.example.yaml config/applicant.yaml
+```
+
+Then edit `config/applicant.yaml` locally. It contains personal contact data, so
+it is intentionally ignored by git.
+
+Available resume families are the subdirectories under:
+
+```text
+/Users/jbgarner/Documents/resume/role_families
+```
+
+Common examples:
+
+```bash
+jobbot apply --job-url "https://www.linkedin.com/jobs/view/..." --resume-family backend_engineer
+jobbot apply --job-url "https://www.linkedin.com/jobs/view/..." --resume-family data_engineer
+jobbot apply --job-url "https://www.linkedin.com/jobs/view/..." --resume-family distributed_systems
+jobbot apply --job-url "https://www.linkedin.com/jobs/view/..." --resume-family full_stack_engineer
+```
+
+Use `--close-when-done` only when you do not need the browser left open for
+inspection.
+
 ## Search Presets
 
 Edit:
@@ -153,10 +209,20 @@ config/searches.yaml
 Each preset defines LinkedIn search filters:
 
 ```yaml
+defaults:
+  location: "Mountain View, California, United States"
+  distance: 10
+  easy_apply: true
+  posted_within: r604800
+  sort_by: DD
+  work_type:
+    - onsite
+    - hybrid
+  experience:
+    - mid_senior
+
 backend_platform:
   keywords: "software engineer backend platform data infrastructure"
-  location: "Mountain View, California, United States"
-  easy_apply: true
 ```
 
 ## Criteria

@@ -12,6 +12,27 @@ LINKEDIN_JOB_ID_RE = re.compile(r"(?:currentJobId=|/jobs/view/)(\d+)")
 LINKEDIN_DASH_RE = r"[-–—]"
 MONEY_SUFFIX_BOUNDARY = r"(?![\dA-Za-z])(?!(?:\s*(?:[mM]\b|million|billion)))"
 MAX_LOCATION_CHARS = 50
+STRUCTURED_DESCRIPTION_JS = r"""
+function structuredDescriptionText(descriptionNode) {
+  if (!descriptionNode) return '';
+  const blocks = Array.from(descriptionNode.querySelectorAll('h2,h3,h4,p,li'));
+  const lines = [];
+  for (const block of blocks) {
+    const fullText = (block.innerText || block.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!fullText) continue;
+    const strong = block.querySelector('strong,b');
+    const strongText = strong ? (strong.innerText || strong.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    if (strongText && strongText.length <= 90 && fullText.startsWith(strongText)) {
+      const rest = fullText.slice(strongText.length).trim();
+      lines.push(strongText);
+      if (rest) lines.push(rest);
+      continue;
+    }
+    lines.push(fullText);
+  }
+  return lines.join(' ').replace(/\s+/g, ' ').trim();
+}
+"""
 
 
 def normalize_job_url(url: str) -> str:
@@ -182,11 +203,13 @@ def extract_job_from_url(job_url: str, profile_dir: Path, headful: bool) -> Job:
         raw_job = page.evaluate(
             """
             () => {
+            """ + STRUCTURED_DESCRIPTION_JS + """
               const text = (document.body.innerText || document.body.textContent || '').replace(/\\s+/g, ' ').trim();
               const descriptionNode =
                 document.querySelector('.jobs-description') ||
                 document.querySelector('.jobs-box__html-content');
-              let descriptionText = ((descriptionNode && (descriptionNode.innerText || descriptionNode.textContent)) || '').replace(/\\s+/g, ' ').trim();
+              const structuredText = structuredDescriptionText(descriptionNode);
+              let descriptionText = structuredText || ((descriptionNode && (descriptionNode.innerText || descriptionNode.textContent)) || '').replace(/\\s+/g, ' ').trim();
               if (!descriptionText) {
                 const aboutIndex = text.indexOf('About the job');
                 const companyIndex = text.indexOf('About the company');
@@ -379,11 +402,13 @@ def _hydrate_detail_text(context, raw_jobs: list[dict]) -> None:
                 detail_data = detail_page.evaluate(
                     """
                     () => {
+                    """ + STRUCTURED_DESCRIPTION_JS + """
                       const text = (document.body.innerText || document.body.textContent || '').replace(/\\s+/g, ' ').trim();
                       const node =
                         document.querySelector('.jobs-description') ||
                         document.querySelector('.jobs-box__html-content');
-                      let detailText = ((node && (node.innerText || node.textContent)) || '').replace(/\\s+/g, ' ').trim();
+                      const structuredText = structuredDescriptionText(node);
+                      let detailText = structuredText || ((node && (node.innerText || node.textContent)) || '').replace(/\\s+/g, ' ').trim();
                       if (!detailText) {
                         const aboutIndex = text.indexOf('About the job');
                         const companyIndex = text.indexOf('About the company');

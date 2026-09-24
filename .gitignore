@@ -1,0 +1,8 @@
+.venv/
+.pytest_cache/
+*.egg-info/
+__pycache__/
+*.pyc
+data/
+config/applicant.yaml
+config/short_answers.yaml

@@ -167,7 +167,7 @@ def classify_job(job: Job, criteria: dict[str, Any], context_rules: Optional[dic
     notes: list[str] = []
     score = 0
 
-    if not job.easy_apply:
+    if criteria.get("require_easy_apply", True) and not job.easy_apply:
         _append_unique(reject_reasons, "not Easy Apply")
 
     allowed_locations = criteria.get("allowed_locations", [])
