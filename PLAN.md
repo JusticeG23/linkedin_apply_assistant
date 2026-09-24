@@ -27,9 +27,9 @@ plus isolated Greenhouse inspection and plan-generation code. Do not extend
 LinkedIn features; retain that code until POC passes, then save a rollback copy
 before cleanup. Twitch plan generation identified missing applicant/resume inputs.
 A local headed-browser attempt then filled and read back 5 profile controls and
-verified selected PDF. Eighteen required API blockers, one unstable phone-country
-control, and CAPTCHA remain; form did not reach final review. Full suite: 125
-tests pass.
+verified selected PDF. Latest browser check reports 23 required controls blank,
+including unstable phone-country control; CAPTCHA remains. Form did not reach
+final review. Full suite: 125 tests pass.
 
 Ethan's draft had blank implementation contracts. Their starting defaults are
 now approved in `artifacts/greenhouse-contract-proposal.md`: inspection endpoint,

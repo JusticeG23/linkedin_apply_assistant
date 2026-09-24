@@ -27,8 +27,9 @@ files stay in place until the POC passes and rollback copy is saved.
 Twitch job `8817023002` was inspected with public GET. Plan includes 25
 application, 3 compliance, and 3 location questions; 24 required-input blockers
 remained without applicant/resume inputs. A local headed-browser attempt then
-filled/read back five profile controls and verified PDF; 18 required questions,
-one phone-country read-back issue, and CAPTCHA still block final review. Initial
+filled/read back five profile controls and verified PDF; latest browser check
+reports 23 required controls blank, including unstable phone-country, and CAPTCHA
+still blocks final review. Initial
 plan omitted location questions; synthetic tests caught/fixed this. Coverage
 includes location, demographic-object, required-cover-letter, and consent
 branches. `.venv/bin/pytest -q` — 125 passed. No LLM, application POST, or final

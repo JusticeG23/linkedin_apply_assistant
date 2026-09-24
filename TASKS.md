@@ -17,8 +17,9 @@ infer requirements beyond it.
 - Synthetic coverage tests required cover letter, location, demographic-object,
   and consent branches.
 - Attempted local headed-browser fill with profile and data-platform resume. Five
-  profile controls read back; PDF verified. Eighteen required questions remain,
-  phone-country read-back unstable, and CAPTCHA remains unsolved. No submit.
+  profile controls read back; PDF verified. Latest browser check reports 23
+  required controls blank, including unstable phone-country control; CAPTCHA
+  remains unsolved. No submit.
 
 ## Active work
 
